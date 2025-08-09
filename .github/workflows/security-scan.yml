@@ -1,0 +1,71 @@
+name: Security Scan
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  sast:
+    name: Static Analysis (Semgrep + CodeQL)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # SEMGREP
+      - name: Run Semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: "p/ci"
+
+      # CODEQL INIT
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: go, javascript, typescript # Mattermost uses these
+
+      # CODEQL ANALYZE
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+  iac:
+    name: IaC Scan (Checkov)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Checkov
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: ./
+
+  secrets:
+    name: Secrets Scan (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Gitleaks
+        uses: zricethezav/gitleaks-action@v2
+
+  deps:
+    name: Dependency & Container Scan (Trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Trivy FS scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          format: table
+          output: trivy-results.txt
+
+  dast:
+    name: Dynamic Scan (OWASP ZAP)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start App (Example)
+        run: echo "For real DAST, point this to a running Mattermost instance."
+      - name: ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.4.0
+        with:
+          target: "https://mattermost.com" # change to your test URL
