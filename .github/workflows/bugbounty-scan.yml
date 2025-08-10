@@ -1,0 +1,94 @@
+name: Ultimate Bug Bounty Security Scan
+
+on:
+  workflow_dispatch:   # Run manually from Actions tab
+  push:                # Run on push to your fork
+  pull_request:        # Run when PRs are opened
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+
+    steps:
+      # 1. Checkout repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      ##################################################
+      # SECRETS SCANNING
+      ##################################################
+
+      - name: Run Gitleaks (Secrets Detection)
+        uses: zricethezav/gitleaks-action@v2
+        with:
+          args: detect --source . --no-git -v
+
+      - name: Run TruffleHog (Deep Secrets Scan)
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: .
+          branch: HEAD
+
+      ##################################################
+      # CODE VULNERABILITY SCANNING
+      ##################################################
+
+      - name: Run Semgrep (Static Analysis)
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: p/ci
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript, python, ruby
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+      ##################################################
+      # DEPENDENCY VULNERABILITY SCANNING
+      ##################################################
+
+      - name: Audit Node.js dependencies
+        run: |
+          if [ -f package.json ]; then
+            npm install --ignore-scripts
+            npm audit --json || true
+          fi
+
+      - name: Audit Python dependencies
+        run: |
+          if [ -f requirements.txt ]; then
+            pip install pip-audit
+            pip-audit || true
+          fi
+
+      - name: Audit Ruby dependencies
+        run: |
+          if [ -f Gemfile.lock ]; then
+            gem install bundler-audit
+            bundler audit check --update || true
+          fi
+
+      ##################################################
+      # INFRASTRUCTURE MISCONFIGURATION SCANNING
+      ##################################################
+
+      - name: Install KICS (IaC Scanner)
+        run: |
+          curl -sfL https://raw.githubusercontent.com/Checkmarx/kics/master/install.sh | sh -s -- -b /usr/local/bin
+
+      - name: Run KICS Scan
+        run: |
+          kics scan -p . -o kics-report.json || true
+
+      ##################################################
+      # FINISH
+      ##################################################
+      - name: Done
+        run: echo "✅ Security scan completed. Review logs for findings."
